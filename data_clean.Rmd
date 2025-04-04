@@ -1,0 +1,82 @@
+---
+title: "datafest_clean"
+author: "Kat Craig"
+date: "2025-04-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+```
+
+## Cleaning:
+
+### Data info:
+
+-Savills
+- represents tenants (corp, nonprofit, hospitals)
+- consult on moving, redesign, etc
+- workplace team: advise clients on design
+- gather data from surveys, interviews,etc
+- space type, size quantities for optimization
+- client will understand what they need size wise to move offices
+
+- Consider:
+- what is market telling you:
+- what are competitors doing
+- where are other people living 
+-- commute times
+
+- Look at things to differentiate themselves
+- looking for trends is important to get ahead of development
+- safety very important
+- looking for next big spot instead of current ones
+
+What is costar:
+- aggregate market data
+- important for assessing rent and trends
+- Kastle data helps assess attendance in the office to help with optimization
+- Can optimize by not including everyone in company in needed office size
+
+Other data:
+- census data
+- talent demographics for areas
+- economic data(stocks, gdp -> office rent, attendance, productivity)
+
+Support clients to help them better use real estate
+- oversee local/industry markets
+
+```{r}
+leases=read_csv("datafest-data-read-only/Leases.csv")
+names(leases)
+filter(leases, !is.na(leases$sublet_internal_class_rent))
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r}
+leases_rename <- leases %>%
+                rename(sqft=leasedSF, 
+                       lease_type=space_type,
+                       total_rentable_area_market=RBA,
+                       available_rentable_area_market=available_space,
+                       available_prop=availability_proportion,     
+                       direct_available_rentable_area_market=direct_available_space,
+                       direct_available_prop=direct_availability_proportion,
+                       sublet_available_area_market=sublet_available_space,
+                       sublet_available_prop= sublet_availability_proportion,
+                       total_leased_area=leasing
+                        ) %>%
+  select(-building_id, -building_name,-company_name) %>%
+  as.factor(internal_class, )
+```
+-change quality "A" to factor "High", "O"->"Other"
+-transaction type: spread "go" vs "stay"
+- move direct_available_space to be 
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
