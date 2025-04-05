@@ -53,7 +53,7 @@ Support clients to help them better use real estate
 - oversee local/industry markets
 
 ```{r}
-leases=read_csv("datafest-data-read-only/Leases.csv")
+leases=read_csv("model_citizens_datafest_2025/Leases.csv")
 names(leases)
 filter(leases, !is.na(leases$sublet_internal_class_rent))
 ```

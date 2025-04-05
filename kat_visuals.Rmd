@@ -1,0 +1,254 @@
+---
+title: "Blah"
+author: "Kat Craig"
+date: "2025-04-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+library(rvest)
+library(curl)
+```
+
+## R Markdown
+
+### Available proportions of total, direct, subletted spaces:
+```{r}
+  leases_props <- leases2 %>%
+  group_by(year, quarter) %>%
+  summarise(
+    available_prop = mean(available_prop, na.rm = TRUE),
+    direct_prop = mean(direct_available_prop, na.rm = TRUE),
+    sublet_prop = mean(sublet_available_prop, na.rm = TRUE),
+    total_leased_sqft = sum(sqft, na.rm = TRUE)
+  ) %>%
+  ungroup() %>%
+  mutate(
+    quarter_start_month = case_when(
+      quarter == "Q1" ~ 1,
+      quarter == "Q2" ~ 4,
+      quarter == "Q3" ~ 7,
+      quarter == "Q4" ~ 10
+    ),
+    date = as.Date(paste(year, quarter_start_month, 1, sep = "-"))
+  )
+    
+  ggplot(leases_props,aes(x = date)) +
+  # scatters
+  geom_point(aes(y = available_prop, color = "Total Available")) +
+  geom_point(aes(y = direct_prop, color = "Direct")) +
+  geom_point(aes(y = sublet_prop, color = "Sublet")) +
+  # fits
+  geom_smooth(aes(y = available_prop, color = "Total Available"), se = FALSE, method="gam") + 
+  geom_smooth(aes(y = direct_prop, color = "Direct"), se = FALSE, method="gam") + 
+  geom_smooth(aes(y = sublet_prop, color = "Sublet"), se = FALSE, method="gam") +  
+  # dates and labels
+  scale_x_date(labels = function(x) {
+  paste(format(x, "%Y"), "Q", (as.integer(format(x, "%m")) - 1) %/% 3 + 1, sep = "")
+}, date_breaks = "3 months") +
+  labs(x = "Quarter", y = "Proportion Available", color = "Legend") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+### Average rents for each lease type:
+```{r}
+leases2%>% group_by(lease_type) %>%
+  summarize(avg_rent = mean(overall_rent, na.rm=TRUE)) %>%
+  filter(lease_type %in% c("New","Relet","Sublet")) %>%
+  ggplot(mapping=aes(x=lease_type, y=avg_rent, fill=lease_type)) +
+  geom_bar(stat="identity")+ 
+  labs(title = "Sublet vs Direct Lease Rent Comparison", x = "Space Type", y = "Average Rent") +
+  geom_text(aes(label = round(avg_rent, 2)), vjust = -0.5, size = 3)+
+  theme_minimal()
+```
+Conclusion: we don't want to sublet
+
+### Absorption rates:
+```{r}
+leases_a <- leases2 %>%
+  filter(internal_class=="A") %>%
+  group_by(year, quarter) %>%
+  summarize(absorption_rate = 100*sum(sqft, na.rm = TRUE) / sum(available_rentable_area_market, na.rm = TRUE),
+            sublet_absorption_rate = 100*sum((filter(., !is.na(sublet_available_area_market)))$sqft, na.rm = TRUE) / sum(sublet_available_area_market, na.rm = TRUE),
+            direct_absorption_rate = 100*sum((filter(., !is.na(direct_available_rentable_area_market)))$sqft, na.rm = TRUE) / sum(direct_available_rentable_area_market, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(
+    quarter_start_month = case_when(
+      quarter == "Q1" ~ 1,
+      quarter == "Q2" ~ 4,
+      quarter == "Q3" ~ 7,
+      quarter == "Q4" ~ 10
+    ),
+    date = as.Date(paste(year, quarter_start_month, 1, sep = "-")))
+
+  
+leases_o <- leases2 %>%
+  filter(internal_class=="O") %>%
+  group_by(year, quarter) %>%
+  summarize(absorption_rate = 100*sum((filter(., !is.na(available_rentable_area_market))) / sum(available_rentable_area_market, na.rm = TRUE),
+            sublet_absorption_rate = 100*sum((filter(., !is.na(sublet_available_area_market)))$sqft, na.rm = TRUE) / sum(sublet_available_area_market, na.rm = TRUE),
+             direct_absorption_rate = 100*sum((filter(., !is.na(direct_available_rentable_area_market)))$sqft, na.rm = TRUE) / sum(direct_available_rentable_area_market, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(
+    quarter_start_month = case_when(
+      quarter == "Q1" ~ 1,
+      quarter == "Q2" ~ 4,
+      quarter == "Q3" ~ 7,
+      quarter == "Q4" ~ 10
+    ),
+    date = as.Date(paste(year, quarter_start_month, 1, sep = "-"))
+  ) 
+
+# regular abs rate:
+  ggplot(mapping=aes(x = date)) +
+  geom_line(leases_a, mapping=aes(y = absorption_rate,color = "High Quality")) +
+    geom_line(leases_o, mapping=aes(y = absorption_rate,color = "Other"))+ labs(title = "Market Absorption Rate Over Time (Total)", x = "Quarter", y = "Absorption Rate (%)")+
+  scale_x_date(labels = function(x) {
+  paste(format(x, "%Y"), "Q", (as.integer(format(x, "%m")) - 1) %/% 3 + 1, sep = "")
+}, date_breaks = "3 months") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# sublet abs rate:
+   ggplot(mapping=aes(x = date)) +
+  geom_line(leases_a, mapping=aes(y = sublet_absorption_rate,color = "High Quality")) +
+    geom_line(leases_o, mapping=aes(y = sublet_absorption_rate,color = "Other"))+ labs(title = "Market Absorption Rate Over Time (Sublets)", x = "Quarter", y = "Absorption Rate (%)")+
+  scale_x_date(labels = function(x) {
+  paste(format(x, "%Y"), "Q", (as.integer(format(x, "%m")) - 1) %/% 3 + 1, sep = "")
+}, date_breaks = "3 months") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE))
+   
+# direct abs rate:
+  ggplot(mapping=aes(x = date)) +
+  geom_line(leases_a, mapping=aes(y = direct_absorption_rate,color = "High Quality")) +
+    geom_line(leases_o, mapping=aes(y = direct_absorption_rate,color = "Other"))+ labs(title = "Market Absorption Rate Over Time (Direct)", x = "Quarter", y = "Absorption Rate (%)")+
+  scale_x_date(labels = function(x) {
+  paste(format(x, "%Y"), "Q", (as.integer(format(x, "%m")) - 1) %/% 3 + 1, sep = "")
+}, date_breaks = "3 months") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE))
+```
+Absorption rate measures the (Space Leased During Period) / (Available Space at Beginning of the Period). This trend shows us that abs rates for both direct and subletted properties steeply declined during the beginning of 2019, though if we look at the total market absorption at this time it was increasing. this implies there may have been more new builds being leased at this time. 
+Interestingly, around the beginning of COVID the sublet/direct absorption rate spikes, while the total rate decreases sharply. Seeing as construction came to a halt around this time, this may imply that people now sought out to rent space in existing spaces due to lack of new ones.
+
+In assessing this, we can see that there is a high demand for new spaces when possible, perhaps lended to the options for customization of spaces. When construction is limited, there is no hesitancy in flocking back to existing spaces, however.
+
+Going back to the previous model, the hesitancy to sublet could also be due to the higher rent prices.
+
+Looking at the direct abs model, we see high quality spaces bounced back much quicker than other ones. This shows that even when they are unable to have them for a period of time, tenants will go back to high quality spaces much easier than the other ones.
+
+### Tenant behavior:
+```{r}
+tenant_behavior <- leases2 %>%
+  mutate(
+    quarter_start_month = case_when(
+      quarter == "Q1" ~ 1,
+      quarter == "Q2" ~ 4,
+      quarter == "Q3" ~ 7,
+      quarter == "Q4" ~ 10
+    ),
+    date = as.Date(paste(year, quarter_start_month, 1, sep = "-"))
+  )%>%
+  group_by(date, lease_type, internal_class) %>%
+  summarize(count = n())%>%
+  group_by(lease_type,internal_class)%>%
+  summarise(date=date,
+            count=count,
+            internal_class=internal_class,
+            max=max(count))%>%
+  ungroup()
+
+# bar chart of lease activity
+ggplot(tenant_behavior, aes(x = lease_type, y = count, fill = lease_type)) +
+  geom_bar(stat = "identity") + labs(title = "Tenant Lease Activity Types", x = "Lease Type", y = "Count") +
+  theme_minimal()
+
+ggplot(data=filter(tenant_behavior, lease_type!="NA"),aes(color = lease_type, linetype=internal_class, y = count/max, x=date)) +
+         geom_line()+ labs(title = "Tenant Lease Counts over Time", x = "Year", y = "Relative count") +
+  theme_minimal()+
+  facet_grid(~lease_type)
+
+ggplot(data=filter(tenant_behavior, lease_type!="NA", internal_class!="NA"),aes(color = lease_type, y = count/max, x=date)) +
+         geom_line()+ labs(title = "Tenant Lease Counts over Time", x = "Year", y = "Relative count") +
+  theme_minimal()
+
+  ggplot(data=filter(tenant_behavior, lease_type=="Sublet"),aes(color = lease_type, y = count/max, x=date)) +
+         geom_line()
+ggplot(data=filter(tenant_behavior, lease_type=="New"), aes(color = lease_type, y = count/max, x=date)) +
+         geom_line()
+ggplot(data=filter(tenant_behavior, lease_type=="Relet"), aes(color = lease_type, y = count/max, x=date)) +
+         geom_line()
+```
+As the first two visuals show, wayyy more leases are for relet than anything else. When looking at trends for how these counts changed with time, we see relets had a much sharper dip than anything else, due to workers going remote
+
+### Rent trends over time:
+
+```{r}
+rent_trends <- leases2 %>%
+  group_by(year, quarter, internal_class) %>%
+  summarize(avg_rent = mean(overall_rent, na.rm = TRUE),
+            avg_rent_class = mean(internal_class_rent, na.rm = TRUE),
+            sublet_avg_rent = mean(sublet_overall_rent, na.rm = TRUE),
+            direct_avg_rent = mean(direct_overall_rent, na.rm = TRUE),
+            sublet_avg_rent_class = mean(sublet_internal_class_rent, na.rm = TRUE),
+            direct_avg_rent_class = mean(direct_internal_class_rent, na.rm = TRUE),)%>%
+   mutate(
+    quarter_start_month = case_when(
+      quarter == "Q1" ~ 1,
+      quarter == "Q2" ~ 4,
+      quarter == "Q3" ~ 7,
+      quarter == "Q4" ~ 10
+    ),
+    date = as.Date(paste(year, quarter_start_month, 1, sep = "-"))
+  )
+
+# total rent trends
+ggplot(rent_trends, aes(x = date, linetype = internal_class)) +
+  geom_line(aes(y = avg_rent_class,color="Total") )+
+  geom_line(aes(y = sublet_avg_rent_class,color="Sublet") )+
+  geom_line(aes(y = direct_avg_rent_class,color="Direct") )+labs(title = "Weighted Average Rent Over Time", x = "Year", y = "Rent") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  coord_cartesian(ylim=c(25,50))
+
+```
+Note that at the beginning of 2020 rent is the lowest, correlating with the increasein rent counts across lease types seen in the other models.
+
+### Proportion of quality in space types:
+```{r}
+leases2%>%
+  filter(internal_class=="A"|internal_class=="O")%>%
+  group_by(internal_class, lease_type, CBD_suburban)%>%
+  summarise(count=n())%>%
+  ggplot(mapping = aes(y=lease_type, fill = interaction(CBD_suburban,internal_class), x=count))+
+    geom_col(position="fill")+
+  facet_wrap(~CBD_suburban)+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+leases2%>%
+  filter(internal_class=="A"|internal_class=="O", transaction_category)%>%
+  group_by(internal_class, transaction_category)%>%
+  summarise(count=n())%>%
+  ggplot(mapping = aes(y=transaction_category, fill = internal_class, x=count))+
+    geom_col(position="fill")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+Given the trend of new spaces having a greater proportion of high quality ones, it indicates the tenant's tendency to prefer new spacesdue to their quality. 
+
+### proportions of high quality spaces of new spaces leased over time
+```{r}
+leases2%>%
+  group_by(lease_type)%>%
+  summarise(count=n(),
+            prop_high_quality=nrow(filter(.,internal_class=="A", na.rm = TRUE))/count,
+    count_high_quality=nrow(filter(., lease_type==lease_type, internal_class=="A")))
+            
+  ggplot()
+            
+```
+
