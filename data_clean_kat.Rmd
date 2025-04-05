@@ -1,0 +1,180 @@
+---
+title: "datafest_clean"
+author: "Kat Craig, Gloria Yang, Amishi"
+date: "2025-04-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+library(rvest)
+library(curl)
+```
+
+## Cleaning:
+
+### Data info:
+
+-Savills
+- represents tenants (corp, nonprofit, hospitals)
+- consult on moving, redesign, etc
+- workplace team: advise clients on design
+- gather data from surveys, interviews,etc
+- space type, size quantities for optimization
+- client will understand what they need size wise to move offices
+
+- Consider:
+- what is market telling you:
+- what are competitors doing
+- where are other people living 
+-- commute times
+
+- Look at things to differentiate themselves
+- looking for trends is important to get ahead of development
+- safety very important
+- looking for next big spot instead of current ones
+
+What is costar:
+- aggregate market data
+- important for assessing rent and trends
+- Kastle data helps assess attendance in the office to help with optimization
+- Can optimize by not including everyone in company in needed office size
+
+Other data:
+- census data
+- talent demographics for areas
+- economic data(stocks, gdp -> office rent, attendance, productivity)
+
+Support clients to help them better use real estate
+- oversee local/industry markets
+
+```{r}
+leases=read_csv("datafest-data-read-only/Leases.csv")
+names(leases)
+filter(leases, !is.na(leases$sublet_internal_class_rent))
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r}
+leases1 <- leases %>%
+                rename(sqft=leasedSF, 
+                       lease_type=space_type,
+                       total_rentable_area_market=RBA,
+                       available_rentable_area_market=available_space,
+                       available_prop=availability_proportion,     
+                       direct_available_rentable_area_market=direct_available_space,
+                       direct_available_prop=direct_availability_proportion,
+                       sublet_available_area_market=sublet_available_space,
+                       sublet_available_prop= sublet_availability_proportion,
+                       total_leased_area=leasing
+                        ) %>%
+  select(-building_id, -building_name,-company_name,-address,-costarID)
+
+  leases1$lease_type <- as.factor(leases1$lease_type)
+  leases1$internal_class <- as.factor(leases1$internal_class)
+  leases1$region <- as.factor(leases1$region)
+  leases1$transaction_type <- as.factor(leases1$transaction_type)
+  leases1$CBD_suburban <- as.factor(leases1$CBD_suburban)
+```
+-change quality "A" to factor "High", "O"->"Other"
+-transaction type: spread "go" vs "stay"
+- move direct_available_space to be 
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r}
+write_csv(leases1, "leases_clean.csv")
+```
+
+### Joining city data:
+
+```{r}
+zips=read_csv("uszips.csv")
+zips<-zips %>%
+  select(zip, lat,lng) %>%
+  rename(long=lng)
+zips$zip <- as.double(zips$zip)
+
+leases2 <- leases1 %>%
+            left_join(zips, by="zip")
+```
+```{r}
+write_csv(leases2, "leases_coords.csv")
+```
+
+```{r}
+leases_loc <- leases2 %>%
+                      group_by(zip, internal_class) %>%
+                      summarise(lat=mean(lat, na.rm=TRUE),
+                                long=mean(long, na.rm=TRUE),
+                                avg_overall_rent=mean(overall_rent, na.rm=TRUE),
+                                avg_tot_leased_area=mean(total_leased_area, na.rm=TRUE),
+                                internal_class=internal_class,
+                                year=year,
+                                avg_prop=mean(available_prop, na.rm = TRUE),
+                                avg_sqft=mean(sqft, na.rm=TRUE),
+                                count=n()) %>% ungroup()
+                        
+ggplot(data=filter(leases_loc, avg_sqft<=400000), mapping=aes(x=year, y=avg_sqft,color=internal_class))+ 
+  geom_point(alpha=0.2)+
+  geom_boxplot()
+
+leases_loc %>%
+  ggplot(aes(x=long, y=lat, size=count,color=avg_prop)) +
+    borders("state") +
+    geom_point() +
+    coord_quickmap() +
+    scale_color_gradient(low="lightgray", high="red")
+
+leases2%>%filter(zip==10199 |zip == 10041|zip==10121)
+leases2 %>% group_by(state, lat, long)%>%
+  summarise(avg_sqft=mean(sqft, na.rm=TRUE),
+            count=n(),
+            lat=mean(lat, na.rm=TRUE),
+            long=mean(long, na.rm=TRUE),
+            region=region) %>% arrange(desc(avg_sqft)) %>%
+  ggplot(aes(x=long, y=lat, shape=region,color=avg_sqft, alpha=0.3)) +
+    borders("state") +
+    geom_point() +
+    coord_quickmap() +
+  scale_color_gradient(low="lightgray", high="red")
+  
+```
+
+```{r}
+leases2 <- leases2 %>%
+            mutate(transaction_category = recode(transaction_type, New='Go', Relocation='Go', Renewal='Stay',`Renewal and Expansion`='Stay', Restructure='Stay', Extension='Stay', Expansion='Stay', `Sale - Leaseback`='Stay'))
+unique(leases2$transaction_category)
+
+leases21<- leases2 %>% group_by(state, transaction_category) %>%
+            summarise(count=n(),
+                      avg_rent=mean(overall_rent, na.rm=TRUE),
+                      prop_cat=count/nrow(filter(leases2, transaction_category==transaction_category)))
+
+            ggplot(data=filter(leases21,transaction_category=='Stay'|transaction_category=='Go'), mapping=aes(x=count, y=state)) +
+            geom_col(mapping=aes(fill = transaction_category), position="fill") +
+              labs(x="Proportion Stay vs. Go", y="State")+
+              guides(fill=guide_legend("Stay or Go"))
+```
+
+```{r}
+ggplot(data=filter(leases21,transaction_category=='Stay'), mapping=aes(x=avg_rent, y=prop_cat))+
+  geom_smooth(mapping=aes(color=transaction_category))+
+  coord_cartesian(xlim=c(20,80)) 
+ggplot(data=filter(leases21,transaction_category=='Go'), mapping=aes(x=avg_rent, y=prop_cat))+
+  geom_smooth(mapping=aes(color=transaction_category)) +
+  coord_cartesian(xlim=c(20,80))
+
+ggplot(data=leases21, mapping=aes(x=avg_rent, y=prop_cat))+
+  geom_smooth(mapping=aes(color=transaction_category))
+```
+
+
+
