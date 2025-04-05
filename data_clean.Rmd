@@ -13,6 +13,7 @@ library(ggplot2)
 library(stringr)
 library(rvest)
 library(curl)
+install.packages(curl)
 ```
 
 ## Cleaning:
@@ -53,7 +54,7 @@ Support clients to help them better use real estate
 - oversee local/industry markets
 
 ```{r}
-leases=read_csv("datafest-data-read-only/Leases.csv")
+leases=Leases
 names(leases)
 filter(leases, !is.na(leases$sublet_internal_class_rent))
 ```
@@ -175,6 +176,11 @@ ggplot(data=filter(leases21,transaction_category=='Go'), mapping=aes(x=avg_rent,
 ggplot(data=leases21, mapping=aes(x=avg_rent, y=prop_cat))+
   geom_smooth(mapping=aes(color=transaction_category))
 ```
+
+
+
+
+
 
 
 
