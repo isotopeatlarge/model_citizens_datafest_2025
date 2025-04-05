@@ -86,6 +86,5 @@ Note that the `echo = FALSE` parameter was added to the code chunk to prevent pr
 ### Joining city data:
 
 ```{r}
-cities=read.cs
 ```
 
