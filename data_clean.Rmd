@@ -75,7 +75,8 @@ leases_rename <- leases %>%
                        sublet_available_prop= sublet_availability_proportion,
                        total_leased_area=leasing
                         ) %>%
-  select(-building_id, -building_name,-company_name)
+  select(-building_id, -building_name,-company_name,-address)
+
 ```
 -change quality "A" to factor "High", "O"->"Other"
 -transaction type: spread "go" vs "stay"
