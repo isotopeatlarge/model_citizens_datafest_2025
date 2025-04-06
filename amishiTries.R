@@ -2,7 +2,12 @@ library(tidyverse)
 library(stringr)
 library(scales)
 library(ggcorrplot)
+# install.packages('factoextra')
+library(factoextra )
 # install.packages("ggcorrplot")
+# install.packages("gridExtra")  # if not already installed
+library(gridExtra)
+library(cluster)
 
 mycols <- c("#5fad56", "#f2c14e", "#f78154", "#4d9078")
 
@@ -238,3 +243,147 @@ cst
 ggplot(industry, aes(internal_industry, fill =  internal_class)) + geom_bar() +
   theme(axis.text.x=element_text(angle=-20, hjust=0.001)) + 
   scale_fill_manual(values = mycols)
+
+
+## clustering tiem
+
+clusterData <- leases_coords %>% group_by(region) %>%
+  arrange(yrq) %>%
+  summarise(changeTLA = 100* (last(total_rentable_area_market)-first(total_rentable_area_market))/first(total_rentable_area_market),
+            changeOverRent = 100* (last(overall_rent)-first(overall_rent))/first(overall_rent), 
+            changeAP = 100* (last(available_prop)-first(available_prop))/first(available_prop), 
+            percentA = mean(internal_class == "A", na.rm = TRUE)*100,
+            percentGo = mean(transaction_category == "Go", na.rm = TRUE)* 100)
+
+preJoin <- Major_Market_Occupancy_Data_revised %>% group_by(market) %>%
+  summarise(avg_occup_prop = mean(avg_occupancy_proportion))
+clusterData %>% left_join(preJoin, 'market')
+clusterData <- clusterData %>% column_to_rownames( var = 'market')
+
+clusterData
+
+summary(clusterData)
+clusterData$changeTLA <- ifelse(is.na(clusterData$changeTLA), mean(clusterData$changeTLA, na.rm = TRUE), clusterData$changeTLA)
+clusterData$changeOverRent <- ifelse(is.na(clusterData$changeOverRent), mean(clusterData$changeOverRent, na.rm = TRUE), clusterData$changeOverRent)
+clusterData$changeAP <- ifelse(is.na(clusterData$changeAP), mean(clusterData$changeAP, na.rm = TRUE), clusterData$changeAP)
+
+elbow <- fviz_nbclust (clusterData, kmeans, method = "wss") + labs(subtitle = "Elbow Method")
+silhouette <- fviz_nbclust (clusterData, kmeans, method = "silhouette")+ labs(subtitle = "Silhouette
+Method")
+gapStat <- fviz_nbclust (clusterData, kmeans, method = "gap_stat")+ labs(subtitle = "Gap Static Metho
+d")
+grid.arrange(elbow, silhouette, gapStat, nrow = 2, ncol = 2)
+
+set.seed(123)
+group <- kmeans(clusterData[,c("changeTLA", "changeOverRent", "changeAP", "percentA", 'percentGo')], centers = 3, nstart = 25)
+
+names(clusterData)
+
+group$cluster
+
+clusplot(clusterData[,-1], group$cluster, main = "2D Representation of the Cluster Solution",
+         color=TRUE, shade = TRUE, labels=2, lines=0)
+
+nums <- leases_clean %>% select(where(is.numeric))
+summary(nums)
+
+nums$total_rentable_area_market <- 
+  ifelse(is.na(nums$total_rentable_area_market), 
+         mean(nums$total_rentable_area_market, na.rm = TRUE), 
+         nums$total_rentable_area_market)
+
+nums$available_rentable_area_market <- 
+  ifelse(is.na(nums$available_rentable_area_market), 
+         mean(nums$available_rentable_area_market, na.rm = TRUE), 
+         nums$available_rentable_area_market)
+
+nums$available_prop <- 
+  ifelse(is.na(nums$available_prop), 
+         mean(nums$available_prop, na.rm = TRUE), 
+         nums$available_prop)
+
+nums$internal_class_rent <- 
+  ifelse(is.na(nums$internal_class_rent), 
+         mean(nums$internal_class_rent, na.rm = TRUE), 
+         nums$internal_class_rent)
+
+nums$overall_rent <- 
+  ifelse(is.na(nums$overall_rent), 
+         mean(nums$overall_rent, na.rm = TRUE), 
+         nums$overall_rent)
+
+nums$direct_available_rentable_area_market <- 
+  ifelse(is.na(nums$direct_available_rentable_area_market), 
+         mean(nums$direct_available_rentable_area_market, na.rm = TRUE), 
+         nums$direct_available_rentable_area_market)
+
+nums$direct_available_prop <- 
+  ifelse(is.na(nums$direct_available_prop), 
+         mean(nums$direct_available_prop, na.rm = TRUE), 
+         nums$direct_available_prop)
+
+nums$direct_internal_class_rent <- 
+  ifelse(is.na(nums$direct_internal_class_rent), 
+         mean(nums$direct_internal_class_rent, na.rm = TRUE), 
+         nums$direct_internal_class_rent)
+
+nums$direct_overall_rent <- 
+  ifelse(is.na(nums$direct_overall_rent), 
+         mean(nums$direct_overall_rent, na.rm = TRUE), 
+         nums$direct_overall_rent)
+
+nums$sublet_available_area_market <- 
+  ifelse(is.na(nums$sublet_available_area_market), 
+         mean(nums$sublet_available_area_market, na.rm = TRUE), 
+         nums$sublet_available_area_market)
+
+nums$sublet_available_prop <- 
+  ifelse(is.na(nums$sublet_available_prop), 
+         mean(nums$sublet_available_prop, na.rm = TRUE), 
+         nums$sublet_available_prop)
+
+nums$sublet_internal_class_rent <- 
+  ifelse(is.na(nums$sublet_internal_class_rent), 
+         mean(nums$sublet_internal_class_rent, na.rm = TRUE), 
+         nums$sublet_internal_class_rent)
+
+nums$sublet_overall_rent <- 
+  ifelse(is.na(nums$sublet_overall_rent), 
+         mean(nums$sublet_overall_rent, na.rm = TRUE), 
+         nums$sublet_overall_rent)
+
+nums$total_leased_area <- 
+  ifelse(is.na(nums$total_leased_area), 
+         mean(nums$total_leased_area, na.rm = TRUE), 
+         nums$total_leased_area)
+
+summary(nums)
+
+pca <- prcomp(nums, scale = TRUE, center = TRUE)
+scores <- abs(pca$rotation[,1])
+rankedScores <- sort(scores, decreasing = TRUE)
+top <- names(rankedScores[1:10])
+top
+
+names(leases)
+
+
+regionalstay <- leases_coords %>% select(transaction_category, region) #%>%
+  # filter(internal_industry != is.na(internal_industry))
+summary(regionalstay)
+
+tableInd <- table(regionalstay$transaction_category, regionalstay$region)
+print(tableInd)
+
+cst <- chisq.test(tableInd)
+cst
+
+cor.test(leases_coords$overall_rent, leases_coords$available_prop, method = "spearman", use = "complete.obs")
+summary(leases_coords)
+
+g <- ggplot(leases_clean, aes(available_prop, overall_rent)) +
+  labs(title="Overall Rent vs Availability Proportion")
+g + geom_jitter(aes(col=region)) +
+  geom_smooth(aes(col=region), method="lm", se=F) +
+  geom_smooth(method = 'lm') +
+  scale_color_manual(values = mycols)
